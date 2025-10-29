@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import './App.css';
 
@@ -19,6 +19,7 @@ function App() {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -32,8 +33,7 @@ function App() {
 
   const loadTickets = () => {
     const q = query(
-      collection(db, 'tickets'),
-      where('status', 'in', ['open', 'in_progress'])
+      collection(db, 'tickets')
     );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -44,7 +44,10 @@ function App() {
       
       ticketData.sort((a, b) => {
         const priorityOrder = { high: 0, medium: 1, low: 2 };
-        return priorityOrder[a.priority] - priorityOrder[b.priority];
+        if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+          return priorityOrder[a.priority] - priorityOrder[b.priority];
+        }
+        return new Date(b.createdAt?.toDate?.() || 0) - new Date(a.createdAt?.toDate?.() || 0);
       });
       
       setTickets(ticketData);
@@ -58,11 +61,13 @@ function App() {
       const ticketRef = doc(db, 'tickets', ticketId);
       await updateDoc(ticketRef, {
         assignedAgent: agent.uid,
+        assignedAgentEmail: agent.email,
         status: 'in_progress'
       });
       alert('Ticket claimed successfully!');
     } catch (error) {
       console.error('Error claiming ticket:', error);
+      alert('Failed to claim ticket: ' + error.message);
     }
   };
 
@@ -71,7 +76,8 @@ function App() {
       const ticketRef = doc(db, 'tickets', ticketId);
       await updateDoc(ticketRef, {
         status: 'resolved',
-        resolvedAt: new Date()
+        resolvedAt: new Date(),
+        resolvedBy: agent.email
       });
       setSelectedTicket(null);
       alert('Ticket resolved!');
@@ -81,10 +87,36 @@ function App() {
   };
 
   const filteredTickets = tickets.filter(ticket => {
-    if (filter === 'my') return ticket.assignedAgent === agent?.uid;
-    if (filter === 'unassigned') return !ticket.assignedAgent;
+    // Status filter
+    if (filter === 'my') {
+      if (ticket.assignedAgent !== agent?.uid) return false;
+    } else if (filter === 'unassigned') {
+      if (ticket.assignedAgent) return false;
+    } else if (filter === 'open') {
+      if (ticket.status !== 'open' && ticket.status !== 'in_progress') return false;
+    } else if (filter === 'resolved') {
+      if (ticket.status !== 'resolved') return false;
+    }
+    
+    // Department filter
+    if (departmentFilter !== 'all') {
+      if (ticket.department !== departmentFilter) return false;
+    }
+    
     return true;
   });
+
+  const getDepartmentCounts = () => {
+    const counts = { Finance: 0, IT: 0, HR: 0, Support: 0 };
+    tickets.forEach(ticket => {
+      if (ticket.department && counts.hasOwnProperty(ticket.department)) {
+        counts[ticket.department]++;
+      }
+    });
+    return counts;
+  };
+
+  const departmentCounts = getDepartmentCounts();
 
   if (!agent) {
     return <AgentLogin />;
@@ -93,45 +125,100 @@ function App() {
   return (
     <div className="agent-dashboard">
       <header>
-        <h1>Agent Dashboard</h1>
+        <h1>🎯 Agent Dashboard</h1>
         <div className="agent-info">
-          <span>{agent.email}</span>
-          <button onClick={() => auth.signOut()}>Logout</button>
+          <span className="agent-email">👤 {agent.email}</span>
+          <button onClick={() => auth.signOut()} className="logout-btn">Logout</button>
         </div>
       </header>
 
       <div className="dashboard-layout">
         <aside className="ticket-sidebar">
-          <div className="filters">
-            <button 
-              className={filter === 'all' ? 'active' : ''}
-              onClick={() => setFilter('all')}
-            >
-              All ({tickets.length})
-            </button>
-            <button 
-              className={filter === 'my' ? 'active' : ''}
-              onClick={() => setFilter('my')}
-            >
-              My Tickets ({tickets.filter(t => t.assignedAgent === agent.uid).length})
-            </button>
-            <button 
-              className={filter === 'unassigned' ? 'active' : ''}
-              onClick={() => setFilter('unassigned')}
-            >
-              Unassigned ({tickets.filter(t => !t.assignedAgent).length})
-            </button>
+          <div className="filter-section">
+            <h3>Status Filters</h3>
+            <div className="filters">
+              <button 
+                className={filter === 'all' ? 'active' : ''}
+                onClick={() => setFilter('all')}
+              >
+                📋 All Tickets ({tickets.length})
+              </button>
+              <button 
+                className={filter === 'open' ? 'active' : ''}
+                onClick={() => setFilter('open')}
+              >
+                🔓 Open ({tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length})
+              </button>
+              <button 
+                className={filter === 'my' ? 'active' : ''}
+                onClick={() => setFilter('my')}
+              >
+                👨‍💼 My Tickets ({tickets.filter(t => t.assignedAgent === agent.uid).length})
+              </button>
+              <button 
+                className={filter === 'unassigned' ? 'active' : ''}
+                onClick={() => setFilter('unassigned')}
+              >
+                ⭕ Unassigned ({tickets.filter(t => !t.assignedAgent).length})
+              </button>
+              <button 
+                className={filter === 'resolved' ? 'active' : ''}
+                onClick={() => setFilter('resolved')}
+              >
+                ✅ Resolved ({tickets.filter(t => t.status === 'resolved').length})
+              </button>
+            </div>
+          </div>
+
+          <div className="filter-section">
+            <h3>Department Filters</h3>
+            <div className="filters department-filters">
+              <button 
+                className={departmentFilter === 'all' ? 'active' : ''}
+                onClick={() => setDepartmentFilter('all')}
+              >
+                🏢 All Departments
+              </button>
+              <button 
+                className={departmentFilter === 'Finance' ? 'active dept-finance' : 'dept-finance'}
+                onClick={() => setDepartmentFilter('Finance')}
+              >
+                💰 Finance ({departmentCounts.Finance})
+              </button>
+              <button 
+                className={departmentFilter === 'IT' ? 'active dept-it' : 'dept-it'}
+                onClick={() => setDepartmentFilter('IT')}
+              >
+                💻 IT ({departmentCounts.IT})
+              </button>
+              <button 
+                className={departmentFilter === 'HR' ? 'active dept-hr' : 'dept-hr'}
+                onClick={() => setDepartmentFilter('HR')}
+              >
+                👥 HR ({departmentCounts.HR})
+              </button>
+              <button 
+                className={departmentFilter === 'Support' ? 'active dept-support' : 'dept-support'}
+                onClick={() => setDepartmentFilter('Support')}
+              >
+                🎧 Support ({departmentCounts.Support})
+              </button>
+            </div>
           </div>
 
           <div className="ticket-list">
-            {filteredTickets.map(ticket => (
-              <TicketCard
-                key={ticket.id}
-                ticket={ticket}
-                isSelected={selectedTicket?.id === ticket.id}
-                onClick={() => setSelectedTicket(ticket)}
-              />
-            ))}
+            {filteredTickets.length === 0 ? (
+              <p className="no-tickets">No tickets match these filters</p>
+            ) : (
+              filteredTickets.map(ticket => (
+                <TicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  isSelected={selectedTicket?.id === ticket.id}
+                  onClick={() => setSelectedTicket(ticket)}
+                />
+              ))
+            )}
           </div>
         </aside>
 
@@ -140,12 +227,16 @@ function App() {
             <TicketDetails
               ticket={selectedTicket}
               agentId={agent.uid}
+              agentEmail={agent.email}
               onClaim={handleClaimTicket}
               onResolve={handleResolveTicket}
             />
           ) : (
             <div className="no-selection">
-              <p>Select a ticket to view details</p>
+              <div className="empty-state">
+                <h2>👈 Select a ticket to view details</h2>
+                <p>Choose any ticket from the list to see full information and take action</p>
+              </div>
             </div>
           )}
         </main>
@@ -157,36 +248,52 @@ function App() {
 function AgentLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSignup, setIsSignup] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      if (isSignup) {
+        await createUserWithEmailAndPassword(auth, email, password);
+        alert('Account created! You can now login.');
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
     } catch (error) {
-      alert('Login failed: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
   return (
     <div className="agent-login">
-      <h2>Agent Portal Login</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Agent Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit">Login</button>
-      </form>
+      <div className="login-card">
+        <h2>🎯 {isSignup ? 'Create Agent Account' : 'Agent Portal Login'}</h2>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="email"
+            placeholder="Agent Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password (min 6 characters)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="submit" className="submit-btn">
+            {isSignup ? 'Sign Up' : 'Login'}
+          </button>
+        </form>
+        <button 
+          onClick={() => setIsSignup(!isSignup)}
+          className="toggle-btn"
+        >
+          {isSignup ? 'Already have an account? Login' : 'Need an account? Sign Up'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -200,6 +307,15 @@ function TicketCard({ ticket, isSelected, onClick }) {
     }[priority];
   };
 
+  const getDepartmentIcon = (dept) => {
+    return {
+      Finance: '💰',
+      IT: '💻',
+      HR: '👥',
+      Support: '🎧'
+    }[dept] || '📋';
+  };
+
   return (
     <div 
       className={`ticket-card ${isSelected ? 'selected' : ''}`}
@@ -209,20 +325,30 @@ function TicketCard({ ticket, isSelected, onClick }) {
         <span 
           className="priority-indicator"
           style={{ backgroundColor: getPriorityColor(ticket.priority) }}
+          title={`${ticket.priority} priority`}
         />
-        <span className="ticket-id">#{ticket.id.slice(0, 6)}</span>
+        <span className="ticket-id">#{ticket.id?.slice(0, 8)}</span>
+        <span className="department-badge">
+          {getDepartmentIcon(ticket.department)} {ticket.department}
+        </span>
       </div>
       <h4>{ticket.subject}</h4>
-      <p className="description">{ticket.description.slice(0, 60)}...</p>
+      <p className="description">{ticket.description?.slice(0, 60)}...</p>
       <div className="card-footer">
-        <span className="status">{ticket.status}</span>
-        {ticket.assignedAgent && <span className="assigned">Assigned</span>}
+        <span className={`status-badge status-${ticket.status}`}>
+          {ticket.status}
+        </span>
+        {ticket.assignedAgent && (
+          <span className="assigned-badge">
+            👤 Assigned
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function TicketDetails({ ticket, agentId, onClaim, onResolve }) {
+function TicketDetails({ ticket, agentId, agentEmail, onClaim, onResolve }) {
   const [reply, setReply] = useState('');
 
   const handleSendReply = async () => {
@@ -232,6 +358,7 @@ function TicketDetails({ ticket, agentId, onClaim, onResolve }) {
       const ticketRef = doc(getFirestore(), 'tickets', ticket.id);
       const newMessage = {
         sender: 'agent',
+        senderEmail: agentEmail,
         message: reply,
         timestamp: new Date()
       };
@@ -245,25 +372,41 @@ function TicketDetails({ ticket, agentId, onClaim, onResolve }) {
       alert('Reply sent!');
     } catch (error) {
       console.error('Error sending reply:', error);
+      alert('Failed to send reply');
     }
   };
 
   const isAssignedToMe = ticket.assignedAgent === agentId;
   const canClaim = !ticket.assignedAgent;
+  const isResolved = ticket.status === 'resolved';
+
+  const getDepartmentIcon = (dept) => {
+    return {
+      Finance: '💰',
+      IT: '💻',
+      HR: '👥',
+      Support: '🎧'
+    }[dept] || '📋';
+  };
 
   return (
     <div className="ticket-details">
       <div className="details-header">
-        <h2>{ticket.subject}</h2>
+        <div className="header-left">
+          <h2>{ticket.subject}</h2>
+          <span className="department-tag">
+            {getDepartmentIcon(ticket.department)} {ticket.department} Department
+          </span>
+        </div>
         <div className="actions">
-          {canClaim && (
+          {canClaim && !isResolved && (
             <button onClick={() => onClaim(ticket.id)} className="btn-claim">
-              Claim Ticket
+              👋 Claim Ticket
             </button>
           )}
-          {isAssignedToMe && (
+          {isAssignedToMe && !isResolved && (
             <button onClick={() => onResolve(ticket.id)} className="btn-resolve">
-              Resolve
+              ✅ Mark as Resolved
             </button>
           )}
         </div>
@@ -271,42 +414,87 @@ function TicketDetails({ ticket, agentId, onClaim, onResolve }) {
 
       <div className="ticket-meta">
         <div className="meta-item">
-          <strong>Priority:</strong> {ticket.priority}
+          <strong>Priority:</strong>
+          <span className={`priority-tag priority-${ticket.priority}`}>
+            {ticket.priority?.toUpperCase()}
+          </span>
         </div>
         <div className="meta-item">
-          <strong>Status:</strong> {ticket.status}
+          <strong>Status:</strong>
+          <span className={`status-tag status-${ticket.status}`}>
+            {ticket.status}
+          </span>
         </div>
         <div className="meta-item">
-          <strong>Sentiment:</strong> {ticket.sentiment?.score?.toFixed(2) || 'N/A'}
+          <strong>Sentiment:</strong>
+          <span className="sentiment-score">
+            {ticket.sentiment?.score ? 
+              (ticket.sentiment.score < -0.3 ? '😢 Negative' : 
+               ticket.sentiment.score < 0.3 ? '😐 Neutral' : '😊 Positive') 
+              : 'N/A'}
+          </span>
+        </div>
+        <div className="meta-item">
+          <strong>Created:</strong>
+          <span>{new Date(ticket.createdAt?.toDate?.()).toLocaleString()}</span>
         </div>
       </div>
 
+      {ticket.assignedAgent && (
+        <div className="assigned-info">
+          <strong>📌 Assigned to:</strong> {ticket.assignedAgentEmail || 'Agent'}
+        </div>
+      )}
+
       <div className="ticket-description">
-        <h3>Description</h3>
+        <h3>📝 Description</h3>
         <p>{ticket.description}</p>
       </div>
 
       <div className="chat-history">
-        <h3>Chat History</h3>
+        <h3>💬 Conversation History ({(ticket.chatHistory || []).length} messages)</h3>
         <div className="messages">
-          {(ticket.chatHistory || []).map((msg, idx) => (
-            <div key={idx} className={`message ${msg.sender}`}>
-              <div className="message-sender">{msg.sender}</div>
-              <div className="message-content">{msg.message}</div>
-            </div>
-          ))}
+          {(ticket.chatHistory || []).length === 0 ? (
+            <p className="no-messages">No messages yet</p>
+          ) : (
+            (ticket.chatHistory || []).map((msg, idx) => (
+              <div key={idx} className={`message ${msg.sender}`}>
+                <div className="message-header">
+                  <span className="message-sender">
+                    {msg.sender === 'user' ? '👤 Customer' : 
+                     msg.sender === 'bot' ? '🤖 AI Assistant' : 
+                     `👨‍💼 ${msg.senderEmail || 'Agent'}`}
+                  </span>
+                  <span className="message-time">
+                    {new Date(msg.timestamp?.toDate?.()).toLocaleString()}
+                  </span>
+                </div>
+                <div className="message-content">{msg.message}</div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
-      {isAssignedToMe && (
+      {isAssignedToMe && !isResolved && (
         <div className="reply-section">
+          <h3>✍️ Send Reply</h3>
           <textarea
             value={reply}
             onChange={(e) => setReply(e.target.value)}
-            placeholder="Type your reply..."
+            placeholder="Type your reply to the customer..."
             rows="4"
           />
-          <button onClick={handleSendReply}>Send Reply</button>
+          <button onClick={handleSendReply} disabled={!reply.trim()}>
+            📤 Send Reply
+          </button>
+        </div>
+      )}
+
+      {isResolved && (
+        <div className="resolved-message">
+          ✅ This ticket has been resolved
+          {ticket.resolvedBy && ` by ${ticket.resolvedBy}`}
         </div>
       )}
     </div>

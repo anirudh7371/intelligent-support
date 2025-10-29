@@ -16,6 +16,48 @@ def _cors_headers():
         'Access-Control-Max-Age': '3600'
     }
 
+def categorize_department(subject, description):
+    """Categorize ticket into departments using keyword matching"""
+    text = (subject + " " + description).lower()
+    
+    # Finance keywords
+    finance_keywords = ['payment', 'billing', 'invoice', 'refund', 'charge', 'credit card', 
+                       'subscription', 'money', 'price', 'cost', 'transaction', 'bank']
+    
+    # IT keywords
+    it_keywords = ['login', 'password', 'error', 'bug', 'crash', 'technical', 'app', 
+                   'website', 'loading', 'not working', 'server', 'access', 'install']
+    
+    # HR keywords
+    hr_keywords = ['account', 'profile', 'settings', 'personal', 'email change', 
+                   'delete account', 'privacy', 'data']
+    
+    # Support keywords
+    support_keywords = ['help', 'how to', 'question', 'guide', 'tutorial', 'feature',
+                       'understand', 'explain', 'show me']
+    
+    # Count matches
+    finance_score = sum(1 for keyword in finance_keywords if keyword in text)
+    it_score = sum(1 for keyword in it_keywords if keyword in text)
+    hr_score = sum(1 for keyword in hr_keywords if keyword in text)
+    support_score = sum(1 for keyword in support_keywords if keyword in text)
+    
+    scores = {
+        'Finance': finance_score,
+        'IT': it_score,
+        'HR': hr_score,
+        'Support': support_score
+    }
+    
+    # Get department with highest score
+    department = max(scores.items(), key=lambda x: x[1])[0]
+    
+    # If no clear match, default to Support
+    if scores[department] == 0:
+        department = 'Support'
+    
+    return department
+
 @functions_framework.http
 def create_ticket(request):
     if request.method == 'OPTIONS':
@@ -36,6 +78,7 @@ def create_ticket(request):
         if not all([user_id, subject, description]):
             return (jsonify({'error': 'Missing required fields'}), 400, headers)
         
+        # Sentiment analysis
         try:
             document = language_v1.Document(
                 content=description,
@@ -52,8 +95,13 @@ def create_ticket(request):
             score = 0.0
             magnitude = 0.0
         
+        # Priority based on sentiment
         priority = 'high' if score < -0.3 else 'medium' if score < 0.3 else 'low'
         
+        # AI Department Categorization
+        department = categorize_department(subject, description)
+        
+        # Create ticket
         ticket_id = str(uuid.uuid4())
         ticket = {
             'ticketId': ticket_id,
@@ -62,6 +110,7 @@ def create_ticket(request):
             'description': description,
             'status': 'open',
             'priority': priority,
+            'department': department,
             'sentiment': {
                 'score': score,
                 'magnitude': magnitude
@@ -76,6 +125,7 @@ def create_ticket(request):
         response_data = {
             'ticketId': ticket_id,
             'priority': priority,
+            'department': department,
             'status': 'open'
         }
         
