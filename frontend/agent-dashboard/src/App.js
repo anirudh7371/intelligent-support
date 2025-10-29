@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
@@ -21,55 +21,54 @@ function App() {
   const [filter, setFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
 
-  useEffect(() => {
-    let firestoreUnsubscribe = null;
-
-    const authUnsubscribe = auth.onAuthStateChanged((user) => {
-      setAgent(user);
-      if (user) {
-        // User is logged in, set up the Firestore listener
-        firestoreUnsubscribe = loadTickets();
-      } else {
-        // User is logged out, clear tickets and unsubscribe
-        setTickets([]);
-        if (firestoreUnsubscribe) {
-          firestoreUnsubscribe();
-        }
-      }
-    });
-
-    return () => {
-      authUnsubscribe();
-      if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
-      }
-    };
-  }, []);
-
-  const loadTickets = () => {
+  const loadTickets = useCallback(() => {
     const q = query(
       collection(db, 'tickets')
     );
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ticketData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      
+
       ticketData.sort((a, b) => {
         const priorityOrder = { high: 0, medium: 1, low: 2 };
-        if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+        // Check if priorities are valid and different
+        if (a.priority && b.priority && priorityOrder[a.priority] !== priorityOrder[b.priority]) {
           return priorityOrder[a.priority] - priorityOrder[b.priority];
         }
+        // Fall back to sorting by creation date
         return new Date(b.createdAt?.toDate?.() || 0) - new Date(a.createdAt?.toDate?.() || 0);
       });
-      
+
       setTickets(ticketData);
     });
 
     return unsubscribe;
-  };
+  }, []);
+  useEffect(() => {
+    let firestoreUnsubscribe = () => {};
+
+    const authUnsubscribe = auth.onAuthStateChanged((user) => {
+      firestoreUnsubscribe();
+
+      setAgent(user);
+      if (user) {
+        firestoreUnsubscribe = loadTickets();
+      } else {
+        // User is logged out, clear data
+        setTickets([]);
+        firestoreUnsubscribe = () => {}; // Reset to empty
+      }
+    });
+
+    // Return a cleanup function
+    return () => {
+      authUnsubscribe();
+      firestoreUnsubscribe();
+    };
+  }, [loadTickets]);
 
   const handleClaimTicket = async (ticketId) => {
     try {

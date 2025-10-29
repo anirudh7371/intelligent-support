@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback} from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -23,43 +23,50 @@ function App() {
   const [activeTicket, setActiveTicket] = useState(null);
   const [view, setView] = useState('list');
 
-  useEffect(() => {
-    let firestoreUnsubscribe = null;
-
-    const authUnsubscribe = auth.onAuthStateChanged((user) => {
-      setUser(user);
-      if (user) {
-        // User is logged in, set up the Firestore listener
-        firestoreUnsubscribe = loadUserTickets(user.uid);
-      } else {
-        // User is logged out, clear tickets and unsubscribe
-        setTickets([]);
-        if (firestoreUnsubscribe) {
-          firestoreUnsubscribe();
-        }
-      }
-    });
-    return () => {
-      authUnsubscribe();
-      if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
-      }
-    };
-  }, []);
-
-  const loadUserTickets = (userId) => {
+  const loadUserTickets = useCallback((userId) => {
     const q = query(collection(db, 'tickets'), where('userId', '==', userId));
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ticketData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+
+      // Sort by creation date, newest first
+      ticketData.sort((a, b) => 
+        (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0)
+      );
+
       setTickets(ticketData);
     });
 
     return unsubscribe;
-  };
+  }, []);
+
+  useEffect(() => {
+    let firestoreUnsubscribe = () => {}; // Initialize as an empty function
+
+    const authUnsubscribe = auth.onAuthStateChanged((user) => {
+      // Clean up any *previous* listener before setting a new one
+      firestoreUnsubscribe();
+
+      setUser(user);
+      if (user) {
+        // User is logged in, create new listener
+        firestoreUnsubscribe = loadUserTickets(user.uid);
+      } else {
+        // User is logged out, clear data
+        setTickets([]);
+        firestoreUnsubscribe = () => {}; // Reset to empty
+      }
+    });
+
+    // Return a cleanup function for when the component unmounts
+    return () => {
+      authUnsubscribe();
+      firestoreUnsubscribe();
+    };
+  }, [loadUserTickets]);
 
   const handleLogin = async (email, password) => {
     try {
