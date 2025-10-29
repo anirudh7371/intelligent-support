@@ -1,0 +1,26 @@
+{
+  "hosting": [
+    {
+      "target": "customer-app",
+      "public": "frontend/customer-app/build",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "agent-dashboard",
+      "public": "frontend/agent-dashboard/build",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}

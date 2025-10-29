@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "intelligent-support"
+  },
+  "targets": {
+    "intelligent-support": {
+      "hosting": {
+        "customer-app": [
+          "intelligent-support"
+        ],
+        "agent-dashboard": [
+          "intelligent-support-agent"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
