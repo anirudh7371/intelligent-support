@@ -22,13 +22,28 @@ function App() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    let firestoreUnsubscribe = null;
+
+    const authUnsubscribe = auth.onAuthStateChanged((user) => {
       setAgent(user);
       if (user) {
-        loadTickets();
+        // User is logged in, set up the Firestore listener
+        firestoreUnsubscribe = loadTickets();
+      } else {
+        // User is logged out, clear tickets and unsubscribe
+        setTickets([]);
+        if (firestoreUnsubscribe) {
+          firestoreUnsubscribe();
+        }
       }
     });
-    return unsubscribe;
+
+    return () => {
+      authUnsubscribe();
+      if (firestoreUnsubscribe) {
+        firestoreUnsubscribe();
+      }
+    };
   }, []);
 
   const loadTickets = () => {

@@ -24,13 +24,27 @@ function App() {
   const [view, setView] = useState('list');
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    let firestoreUnsubscribe = null;
+
+    const authUnsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
       if (user) {
-        loadUserTickets(user.uid);
+        // User is logged in, set up the Firestore listener
+        firestoreUnsubscribe = loadUserTickets(user.uid);
+      } else {
+        // User is logged out, clear tickets and unsubscribe
+        setTickets([]);
+        if (firestoreUnsubscribe) {
+          firestoreUnsubscribe();
+        }
       }
     });
-    return unsubscribe;
+    return () => {
+      authUnsubscribe();
+      if (firestoreUnsubscribe) {
+        firestoreUnsubscribe();
+      }
+    };
   }, []);
 
   const loadUserTickets = (userId) => {
@@ -77,8 +91,18 @@ function App() {
       </header>
 
       <nav>
-        <button onClick={() => setView('list')}>My Tickets</button>
-        <button onClick={() => setView('create')}>New Ticket</button>
+        <button 
+          onClick={() => setView('list')} 
+          className={view === 'list' ? 'active' : ''}
+        >
+          My Tickets
+        </button>
+        <button 
+          onClick={() => setView('create')}
+          className={view === 'create' ? 'active' : ''}
+        >
+          New Ticket
+        </button>
       </nav>
 
       <main>
@@ -95,7 +119,10 @@ function App() {
         {view === 'create' && (
           <CreateTicket 
             userId={user.uid}
-            onCreated={() => setView('list')}
+            onCreated={() => {
+              setView('list');
+              setActiveTicket(null);
+            }}
           />
         )}
 
@@ -126,27 +153,31 @@ function AuthScreen({ onLogin, onSignup }) {
 
   return (
     <div className="auth-screen">
-      <h2>{isLogin ? 'Login' : 'Sign Up'}</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button type="submit">{isLogin ? 'Login' : 'Sign Up'}</button>
-      </form>
-      <button onClick={() => setIsLogin(!isLogin)}>
-        {isLogin ? 'Need an account?' : 'Already have an account?'}
-      </button>
+      <div className="auth-card">
+        <h2>{isLogin ? 'Login' : 'Sign Up'}</h2>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="submit" className="auth-button">
+            {isLogin ? 'Login' : 'Sign Up'}
+          </button>
+        </form>
+        <button onClick={() => setIsLogin(!isLogin)} className="toggle-button">
+          {isLogin ? 'Need an account? Sign Up' : 'Already have an account? Login'}
+        </button>
+      </div>
     </div>
   );
 }

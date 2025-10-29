@@ -19,9 +19,10 @@ function TicketList({ tickets, onSelectTicket }) {
         <div className="tickets">
           {tickets.map(ticket => (
             <div 
-              key={ticket.id} 
-              className="ticket-card"
-              onClick={() => onSelectTicket(ticket)}
+                key={ticket.id} 
+                className="ticket-card"
+                style={{ borderLeftColor: getPriorityColor(ticket.priority) }}
+                onClick={() => onSelectTicket(ticket)}
             >
               <div className="ticket-header">
                 <h3>{ticket.subject}</h3>
@@ -34,7 +35,7 @@ function TicketList({ tickets, onSelectTicket }) {
               </div>
               <p className="ticket-description">{ticket.description}</p>
               <div className="ticket-footer">
-                <span className="status">{ticket.status}</span>
+                <span className={`status status-${ticket.status}`}>{ticket.status}</span>
                 <span className="date">
                   {new Date(ticket.createdAt?.toDate()).toLocaleDateString()}
                 </span>
