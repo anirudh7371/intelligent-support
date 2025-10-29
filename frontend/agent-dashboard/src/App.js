@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import './App.css';
 
 const firebaseConfig = {
@@ -22,31 +22,34 @@ function App() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
 
   const loadTickets = useCallback(() => {
-    const q = query(
-      collection(db, 'tickets')
-    );
+    // Load ALL tickets (no where clause)
+    const ticketsRef = collection(db, 'tickets');
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(ticketsRef, (snapshot) => {
       const ticketData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
 
+      // Sort by priority and date
       ticketData.sort((a, b) => {
         const priorityOrder = { high: 0, medium: 1, low: 2 };
-        // Check if priorities are valid and different
         if (a.priority && b.priority && priorityOrder[a.priority] !== priorityOrder[b.priority]) {
           return priorityOrder[a.priority] - priorityOrder[b.priority];
         }
-        // Fall back to sorting by creation date
-        return new Date(b.createdAt?.toDate?.() || 0) - new Date(a.createdAt?.toDate?.() || 0);
+        const timeA = a.createdAt?.toDate?.() || a.createdAt || 0;
+        const timeB = b.createdAt?.toDate?.() || b.createdAt || 0;
+        return new Date(timeB) - new Date(timeA);
       });
 
       setTickets(ticketData);
+    }, (error) => {
+      console.error('Error loading tickets:', error);
     });
 
     return unsubscribe;
   }, []);
+
   useEffect(() => {
     let firestoreUnsubscribe = () => {};
 
@@ -57,13 +60,11 @@ function App() {
       if (user) {
         firestoreUnsubscribe = loadTickets();
       } else {
-        // User is logged out, clear data
         setTickets([]);
-        firestoreUnsubscribe = () => {}; // Reset to empty
+        firestoreUnsubscribe = () => {};
       }
     });
 
-    // Return a cleanup function
     return () => {
       authUnsubscribe();
       firestoreUnsubscribe();
@@ -296,6 +297,7 @@ function AgentLogin() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            minLength="6"
           />
           <button type="submit" className="submit-btn">
             {isSignup ? 'Sign Up' : 'Login'}
@@ -350,7 +352,7 @@ function TicketCard({ ticket, isSelected, onClick }) {
       <p className="description">{ticket.description?.slice(0, 60)}...</p>
       <div className="card-footer">
         <span className={`status-badge status-${ticket.status}`}>
-          {ticket.status}
+          {ticket.status.replace('_', ' ')}
         </span>
         {ticket.assignedAgent && (
           <span className="assigned-badge">
@@ -403,6 +405,18 @@ function TicketDetails({ ticket, agentId, agentEmail, onClaim, onResolve }) {
     }[dept] || '📋';
   };
 
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+      if (timestamp.toDate) {
+        return timestamp.toDate().toLocaleString();
+      }
+      return new Date(timestamp).toLocaleString();
+    } catch {
+      return '';
+    }
+  };
+
   return (
     <div className="ticket-details">
       <div className="details-header">
@@ -436,7 +450,7 @@ function TicketDetails({ ticket, agentId, agentEmail, onClaim, onResolve }) {
         <div className="meta-item">
           <strong>Status:</strong>
           <span className={`status-tag status-${ticket.status}`}>
-            {ticket.status}
+            {ticket.status.replace('_', ' ')}
           </span>
         </div>
         <div className="meta-item">
@@ -450,7 +464,7 @@ function TicketDetails({ ticket, agentId, agentEmail, onClaim, onResolve }) {
         </div>
         <div className="meta-item">
           <strong>Created:</strong>
-          <span>{new Date(ticket.createdAt?.toDate?.()).toLocaleString()}</span>
+          <span>{formatTimestamp(ticket.createdAt)}</span>
         </div>
       </div>
 
@@ -480,7 +494,7 @@ function TicketDetails({ ticket, agentId, agentEmail, onClaim, onResolve }) {
                      `👨‍💼 ${msg.senderEmail || 'Agent'}`}
                   </span>
                   <span className="message-time">
-                    {new Date(msg.timestamp?.toDate?.()).toLocaleString()}
+                    {formatTimestamp(msg.timestamp)}
                   </span>
                 </div>
                 <div className="message-content">{msg.message}</div>

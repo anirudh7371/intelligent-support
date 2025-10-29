@@ -10,6 +10,21 @@ function TicketList({ tickets, onSelectTicket }) {
     return colors[priority] || '#6b7280';
   };
 
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'Just now';
+    
+    try {
+      // Handle Firestore Timestamp
+      if (timestamp.toDate) {
+        return timestamp.toDate().toLocaleDateString();
+      }
+      // Handle regular Date or string
+      return new Date(timestamp).toLocaleDateString();
+    } catch (error) {
+      return 'Just now';
+    }
+  };
+
   return (
     <div className="ticket-list">
       <h2>My Support Tickets</h2>
@@ -35,9 +50,11 @@ function TicketList({ tickets, onSelectTicket }) {
               </div>
               <p className="ticket-description">{ticket.description}</p>
               <div className="ticket-footer">
-                <span className={`status status-${ticket.status}`}>{ticket.status}</span>
+                <span className={`status status-${ticket.status}`}>
+                  {ticket.status.replace('_', ' ')}
+                </span>
                 <span className="date">
-                  {new Date(ticket.createdAt?.toDate()).toLocaleDateString()}
+                  {formatDate(ticket.createdAt)}
                 </span>
               </div>
             </div>

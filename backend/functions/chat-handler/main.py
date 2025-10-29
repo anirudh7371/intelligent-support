@@ -1,6 +1,5 @@
 import functions_framework
 from google.cloud import firestore
-import datetime
 from flask import jsonify
 
 db = firestore.Client()
@@ -43,16 +42,17 @@ def chat_handler(request):
         ticket_data = ticket.to_dict()
         current_history = ticket_data.get('chatHistory', [])
         
+        # Use SERVER_TIMESTAMP for consistency
         new_messages = [
             {
                 'sender': 'user',
                 'message': message,
-                'timestamp': datetime.datetime.now()
+                'timestamp': firestore.SERVER_TIMESTAMP
             },
             {
                 'sender': 'bot',
                 'message': bot_reply,
-                'timestamp': datetime.datetime.now()
+                'timestamp': firestore.SERVER_TIMESTAMP
             }
         ]
         

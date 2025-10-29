@@ -1,6 +1,5 @@
 import functions_framework
 from google.cloud import firestore
-import datetime
 from flask import jsonify
 
 db = firestore.Client()
@@ -32,12 +31,12 @@ def agent_assign(request):
         if not ticket_id or not agent_id:
             return (jsonify({'error': 'Missing ticketId or agentId'}), 400, headers)
         
-        # Update ticket
+        # Update ticket - use firestore.SERVER_TIMESTAMP
         ticket_ref = db.collection('tickets').document(ticket_id)
         ticket_ref.update({
             'assignedAgent': agent_id,
             'status': 'in_progress',
-            'assignedAt': datetime.datetime.now()
+            'assignedAt': firestore.SERVER_TIMESTAMP
         })
         
         return (jsonify({'success': True, 'message': 'Ticket assigned successfully'}), 200, headers)

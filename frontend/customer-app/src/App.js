@@ -33,35 +33,36 @@ function App() {
       }));
 
       // Sort by creation date, newest first
-      ticketData.sort((a, b) => 
-        (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0)
-      );
+      ticketData.sort((a, b) => {
+        const timeA = a.createdAt?.toDate?.() || a.createdAt || 0;
+        const timeB = b.createdAt?.toDate?.() || b.createdAt || 0;
+        return new Date(timeB) - new Date(timeA);
+      });
 
       setTickets(ticketData);
+    }, (error) => {
+      console.error('Error loading tickets:', error);
     });
 
     return unsubscribe;
   }, []);
 
   useEffect(() => {
-    let firestoreUnsubscribe = () => {}; // Initialize as an empty function
+    let firestoreUnsubscribe = () => {};
 
     const authUnsubscribe = auth.onAuthStateChanged((user) => {
-      // Clean up any *previous* listener before setting a new one
       firestoreUnsubscribe();
 
       setUser(user);
       if (user) {
-        // User is logged in, create new listener
         firestoreUnsubscribe = loadUserTickets(user.uid);
       } else {
-        // User is logged out, clear data
         setTickets([]);
-        firestoreUnsubscribe = () => {}; // Reset to empty
+        setActiveTicket(null);
+        firestoreUnsubscribe = () => {};
       }
     });
 
-    // Return a cleanup function for when the component unmounts
     return () => {
       authUnsubscribe();
       firestoreUnsubscribe();
@@ -99,13 +100,19 @@ function App() {
 
       <nav>
         <button 
-          onClick={() => setView('list')} 
+          onClick={() => {
+            setView('list');
+            setActiveTicket(null);
+          }} 
           className={view === 'list' ? 'active' : ''}
         >
-          My Tickets
+          My Tickets ({tickets.length})
         </button>
         <button 
-          onClick={() => setView('create')}
+          onClick={() => {
+            setView('create');
+            setActiveTicket(null);
+          }}
           className={view === 'create' ? 'active' : ''}
         >
           New Ticket
@@ -136,7 +143,10 @@ function App() {
         {view === 'chat' && activeTicket && (
           <ChatInterface 
             ticket={activeTicket}
-            onBack={() => setView('list')}
+            onBack={() => {
+              setView('list');
+              setActiveTicket(null);
+            }}
           />
         )}
       </main>
@@ -172,10 +182,11 @@ function AuthScreen({ onLogin, onSignup }) {
           />
           <input
             type="password"
-            placeholder="Password"
+            placeholder="Password (min 6 characters)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            minLength="6"
           />
           <button type="submit" className="auth-button">
             {isLogin ? 'Login' : 'Sign Up'}

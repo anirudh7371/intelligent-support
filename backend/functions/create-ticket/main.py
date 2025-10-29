@@ -1,7 +1,6 @@
 import functions_framework
 from google.cloud import firestore
 from google.cloud import language_v1
-import datetime
 import uuid
 from flask import jsonify
 
@@ -103,6 +102,8 @@ def create_ticket(request):
         
         # Create ticket
         ticket_id = str(uuid.uuid4())
+        
+        # Use firestore.SERVER_TIMESTAMP instead of datetime.now()
         ticket = {
             'ticketId': ticket_id,
             'userId': user_id,
@@ -115,7 +116,7 @@ def create_ticket(request):
                 'score': score,
                 'magnitude': magnitude
             },
-            'createdAt': datetime.datetime.now(),
+            'createdAt': firestore.SERVER_TIMESTAMP,
             'assignedAgent': None,
             'chatHistory': []
         }
